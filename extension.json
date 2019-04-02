@@ -1,0 +1,9 @@
+{
+  "code": "igniter.rave",
+  "name": "Rave",
+  "description": "Accept Credit card, Debit card and Bank account payment directly on your Tasty Igniter site with the Rave payment gateway",
+  "version": "1.0.0",
+  "author": "Anjola Bassey",
+  "icon": "fa-money",
+  "homepage": "",
+}
