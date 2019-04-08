@@ -1,38 +1,49 @@
-<?php namespace Igniter\Rave\Payments;
+<?php
+namespace Igniter\Rave\Payments;
 
 use Admin\Classes\BasePaymentGateway;
-use ApplicationException;
+use Exception;
+use October\Rain\Exception\ApplicationException;
+use Redirect;
+
 
 class Rave extends BasePaymentGateway
 {
-  public function isApplicable($total, $host)
-  {
-    return $host->order_total <= $total;
-  }
+    
+    protected $secKey;
+    protected $cancelUrl;
 
-  public function isTestMode()
-  {
-    return $this->model->transaction_mode != 'live';
-  }
+    protected $orderModel = 'Igniter\Cart\Models\Orders_model';
 
-  public function getPublicKey()
-  {
-    return $this->isTestMode() ? $this->model->test_public_key : $this->model->live_public_key;
-  }
+    public function isApplicable($total, $host)
+    {
+        return $host->order_total <= $total;
+    }
 
-  public function getSecretKey()
-  {
-    return $this->isTestMode() ? $this->model->test_secret_key : $this->model->live_secret_key;
-  }
+    public function isTestMode()
+    {
+        return $this->model->transaction_mode != 'live';
+    }
 
-  public function beforeRenderPaymentForm($host, $controller)
-  {
-    // $controller->addCss('~/extensions/igniter/payregister/assets/stripe.css', 'stripe-css');
-    $controller->addJs('https://api.ravepay.co/flwv3-pug/getpaidx/api/flwpbf-inline.js', 'stripe-js');
-    // $controller->addJs('~/extensions/igniter/payregister/assets/process.stripe.js', 'process-stripe-js');
-  }
+    public function getPublicKey()
+    {
+        return $this->isTestMode() ? $this->model->test_public_key : $this->model->live_public_key;
+    }
 
-  /**
+    public function getSecretKey()
+    {
+        return $this->isTestMode() ? $this->model->test_secret_key : $this->model->live_secret_key;
+    }
+
+    public function registerEntryPoints()
+    {
+        return [
+            'rave_return_url' => 'processReturnUrl',
+            'rave_cancel_url' => 'processCancelUrl',
+        ];
+    }
+
+    /**
      * Processes payment using passed data.
      *
      * @param array $data
@@ -41,36 +52,222 @@ class Rave extends BasePaymentGateway
      *
      * @throws \ApplicationException
      */
-  public function processPaymentForm($data, $host, $order)
-  {
-    $paymentMethod = $order->payment_method;
-    if (!$paymentMethod or $paymentMethod->code != $host->code)
-      throw new ApplicationException('Payment method not found');
-    if (!$this->isApplicable($order->order_total, $host))
-      throw new ApplicationException(sprintf(
-        lang('igniter.payregister::default.alert_min_order_total'),
-        currency_format($host->order_total),
-        $host->name
-      ));
-    try {
-      $gateway = $this->createGateway();
-      $response = '';
-      if (!$response->isSuccessful()) {
-        $order->logPaymentAttempt('Payment error -> ' . $response->getMessage(), 1, $fields, $response->getData());
-        return false;
-      }
-      if ($order->markAsPaymentProcessed()) {
-        $order->logPaymentAttempt('Payment successful', 1, $fields, $response->getData());
-        $order->updateOrderStatus($paymentMethod->order_status, ['notify' => false]);
-      }
-    } catch (Exception $ex) {
-      throw new ApplicationException('Sorry, there was an error processing your payment. Please try again later.');
-    }
-  }
+    public function processPaymentForm($data, $host, $order)
+    {
 
-  protected function createGateway()
-  {
-    $gateway = 
-    return $gateway;
-  }
+        $paymentMethod = $order->payment_method;
+        if (!$paymentMethod or $paymentMethod->code != $host->code)
+            throw new ApplicationException('Payment method not found');
+
+        if (!$this->isApplicable($order->order_total, $host))
+            throw new ApplicationException(sprintf(
+                lang('igniter.payregister::default.alert_min_order_total'),
+                currency_format($host->order_total),
+                $host->name
+            ));
+
+        $fields = $this->getPaymentFormFields($order, $data);
+
+        // meta data
+        $metaData = array(
+            array(
+                'metaname' => 'fields',
+                'metavalue' => serialize($fields)
+            )
+        );
+
+        $curl = curl_init();
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => "https://api.ravepay.co/flwv3-pug/getpaidx/api/v2/hosted/pay",
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST => "POST",
+            CURLOPT_POSTFIELDS => json_encode([
+                'amount' => $fields['amount'],
+                'customer_email' => $fields['customer_email'],
+                'currency' => $fields['currency'],
+                'txref' => $fields['txref'],
+                'PBFPubKey' => $fields['public_key'],
+                'redirect_url' => $fields['redirect_url'],
+                'custom_logo' => $fields['custom_logo'],
+                'custom_title' => $fields['custom_title'],
+                'meta' => $metaData,
+            ]),
+            CURLOPT_HTTPHEADER => [
+                "content-type: application/json",
+                "cache-control: no-cache"
+            ],
+        ));
+
+        $response = curl_exec($curl);
+        $err = curl_error($curl);
+
+        if ($err) {
+            // there was an error contacting the rave API
+            throw new ApplicationException('Curl returned error: ' . $err);
+        }
+
+        $transaction = json_decode($response);
+
+        if (!$transaction->data && !$transaction->data->link) {
+
+            $order->logPaymentAttempt('API returned error: ' . $transaction->message, 1, $fields, $transaction->message);
+            // there was an error from the API
+            // throw new ApplicationException('API returned error: ' . $transaction->message);
+
+            return false;
+        }
+
+        // redirect to page so User can pay
+        return Redirect::to($transaction->data->link);
+    }
+
+    public function processReturnUrl($params)
+    {
+        // get txref
+        if (isset($_GET['txref'])) {
+            $txref = $_GET['txref'];
+        } else {
+            $resp = json_decode($_GET['resp'], true);
+            $txref = $resp['data']['data']['txRef'];
+        }
+
+        $hash = $params;
+        $order = $this->createOrderModel()->whereHash($hash)->first();
+        // $paymentMethod = $order->payment_method;
+ 
+
+        if (!$hash or !$order)
+            throw new ApplicationException('No order found');
+
+        if (!strlen($redirectPage = input('redirect')))
+            throw new ApplicationException('No redirect page found');
+
+        if (!$paymentMethod = $order->payment_method or $paymentMethod->getGatewayClass() != static::class)
+            throw new ApplicationException('No valid payment method found');
+
+        // verify transaction
+        $postdata = array(
+            'SECKEY' => $this->secKey,
+            'txref' => $txref
+        );
+
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, "https://api.ravepay.co/flwv3-pug/getpaidx/api/v2/verify");
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postdata));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $headers = [
+            'Content-Type: application/json',
+        ];
+
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+        $request = curl_exec($ch);
+        $err = curl_error($ch);
+
+        if ($err) {
+            // there was an error contacting rave
+            die('Curl returned error: ' . $err);
+        }
+
+
+        curl_close($ch);
+
+        $result = json_decode($request, true);
+
+        if ('error' == $result['status']) {
+            // there was an error from the API
+            //   die('API returned error: ' . $result->message);
+            // throw new ApplicationException('Curl returned error: ' . $result['status']);
+            $cancelUrl = $this->cancelUrl;
+            $redirectPage = $cancelUrl.'?redirect='.array_get([], 'cancelPage');
+            return Redirect::to($order->getUrl($redirectPage));
+        }
+
+        if ('successful' == $result['data']['status'] && ('00' == $result['data']['chargecode'] || '0' == $result['data']['chargecode'])) {
+
+            // unserialize meta data
+            $meta = $result['data']['meta'][0];
+            $fields = unserialize($meta['metavalue']);
+
+            if ($order->markAsPaymentProcessed()) {
+                $order->logPaymentAttempt('Payment successful', 1, $fields, $result['data']);
+                $order->updateOrderStatus($paymentMethod->order_status, ['notify' => false]);
+            }
+
+            return Redirect::to($order->getUrl($redirectPage));
+        } 
+    }
+    
+    public function processCancelUrl($params)
+    {
+        $hash = $params;
+        $order = $this->createOrderModel()->whereHash($hash)->first();
+        
+        if (!$hash OR !$order)
+            throw new ApplicationException('No order found');
+            
+        if (!strlen($redirectPage = input('redirect')))
+            throw new ApplicationException('No redirect page found');
+            
+        if (!$paymentMethod = $order->payment_method OR $paymentMethod->getGatewayClass() != static::class)
+            throw new ApplicationException('No valid payment method found');
+            
+        $order->logPaymentAttempt('Payment canceled by customer', 0, input());
+        return Redirect::to($order->getUrl($redirectPage, null));
+        $order->updateOrderStatus($paymentMethod->order_status, ['notify' => false]);
+    }
+
+    protected function getPaymentFormFields($order, $data = [])
+    {
+
+        $returnUrl = $this->makeEntryPointUrl('rave_return_url') . '/' . $order->hash;
+        $cancelUrl = $this->makeEntryPointUrl('rave_cancel_url') . '/' . $order->hash;
+        
+        // set secret key
+        $this->secKey = $this->getSecretKey();
+
+        $currency = currency()->getUserCurrency();
+
+        switch ($currency) {
+            case 'KES':
+                $country = 'KE';
+                break;
+            case 'GHS':
+                $country = 'GH';
+                break;
+            case 'ZAR':
+                $country = 'ZA';
+                break;
+            case 'TZS':
+                $country = 'TZ';
+                break;
+
+            default:
+                $country = 'NG';
+                break;
+        }
+
+        $fields = array();
+        $fields['public_key'] = $this->getPublicKey();
+        $fields['customer_email'] = $order->email;
+        $fields['customer_firstname'] = $order->first_name;
+        $fields['customer_lastname'] = $order->last_name;
+        $fields['customer_phone'] = $order->telephone;
+        $fields['custom_logo'] = $this->model->modal_logo;
+        $fields['custom_title'] = $this->model->modal_title;
+        $fields['country'] = $country;
+        $fields['redirect_url'] = $returnUrl . '?redirect=' . array_get($data, 'successPage');
+        $fields['cancel_url'] = $cancelUrl.'?redirect='.array_get($data, 'cancelPage');
+        $fields['txref'] = $order->order_id . '_' . time();
+        $fields['amount'] = number_format($order->order_total, 2, '.', '');
+        $fields['currency'] = $currency;
+        
+        // set cancel url
+        $this->cancelUrl = $fields['cancel_url'];
+        
+        return $fields;
+    }
 }

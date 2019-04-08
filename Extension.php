@@ -4,16 +4,16 @@ use System\Classes\BaseExtension;
 
 class Extension extends BaseExtension
 {
-    // public function registerComponents()
-    // {
-    //     return [
-    //         'Igniter\Rave\Components\Block' => [
-    //             'code' => 'block',
-    //             'name' => 'lang:igniter.rave::default.text_component_title',
-    //             'description' => 'lang:igniter.rave::default.text_component_desc',
-    //         ],
-    //     ];
-    // }
+    public function extensionMeta()
+    {
+        return [
+            'name' => 'Rave',
+            'author' => 'Anjola Bassey',
+            'description' => 'Accept card, bank account, mobile money and mpesa payments during checkout via Rave',
+            'icon' => 'fa-money',
+            'version' => 'v1.0.0'
+        ];
+    }
 
     public function registerPaymentGateways()
     {
@@ -21,7 +21,7 @@ class Extension extends BaseExtension
             'Igniter\Rave\Payments\Rave' => [
                 'code' => 'rave',
                 'name' => 'lang:igniter.rave::default.rave.text_payment_title',
-                'description' => 'lang:igniter.rave::default.text_payment_desc',
+                'description' => 'lang:igniter.rave::default.rave.text_payment_desc',
             ]
         ];
     }

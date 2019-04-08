@@ -13,6 +13,7 @@ return [
     'live_public_key' => [
       'label' => 'lang:igniter.rave::default.rave.label_live_public_key',
       'type' => 'text',
+      'comment' => 'lang:igniter.rave::default.rave.help_live_public_key',
       'trigger' => [
         'action' => 'show',
         'field' => 'transaction_mode',
@@ -22,6 +23,7 @@ return [
     'live_secret_key' => [
       'label' => 'lang:igniter.rave::default.rave.label_live_secret_key',
       'type' => 'text',
+      'comment' => 'lang:igniter.rave::default.rave.help_live_secret_key',
       'trigger' => [
         'action' => 'show',
         'field' => 'transaction_mode',
@@ -31,6 +33,7 @@ return [
     'test_public_key' => [
       'label' => 'lang:igniter.rave::default.rave.label_test_public_key',
       'type' => 'text',
+      'comment' => 'lang:igniter.rave::default.rave.help_test_public_key',
       'trigger' => [
         'action' => 'show',
         'field' => 'transaction_mode',
@@ -40,6 +43,7 @@ return [
     'test_secret_key' => [
       'label' => 'lang:igniter.rave::default.rave.label_test_secret_key',
       'type' => 'text',
+      'comment' => 'lang:igniter.rave::default.rave.help_test_secret_key',
       'trigger' => [
         'action' => 'show',
         'field' => 'transaction_mode',
@@ -49,12 +53,12 @@ return [
     'modal_title' => [
       'label' => 'lang:igniter.rave::default.rave.label_modal_title',
       'type' => 'text',
-      'comment' => 'lang:igniter.rave::default.help_modal_title',
+      'comment' => 'lang:igniter.rave::default.rave.help_modal_title',
     ],
     'modal_logo' => [
       'label' => 'lang:igniter.rave::default.rave.label_modal_logo',
       'type' => 'text',
-      'comment' => 'lang:igniter.rave::default.help_modal_logo',
+      'comment' => 'lang:igniter.rave::default.rave.help_modal_logo',
     ],
     'order_total' => [
       'label' => 'lang:igniter.rave::default.label_order_total',
