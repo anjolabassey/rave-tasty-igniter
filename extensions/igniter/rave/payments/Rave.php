@@ -1,5 +1,6 @@
 <?php
 namespace Igniter\Rave\Payments;
+session_start();
 
 use Admin\Classes\BasePaymentGateway;
 use Exception;
@@ -9,10 +10,6 @@ use Redirect;
 
 class Rave extends BasePaymentGateway
 {
-    
-    protected $secKey;
-    protected $cancelUrl;
-
     protected $orderModel = 'Igniter\Cart\Models\Orders_model';
 
     public function isApplicable($total, $host)
@@ -31,7 +28,7 @@ class Rave extends BasePaymentGateway
     }
 
     public function getSecretKey()
-    {
+    {   
         return $this->isTestMode() ? $this->model->test_secret_key : $this->model->live_secret_key;
     }
 
@@ -85,6 +82,7 @@ class Rave extends BasePaymentGateway
                 'amount' => $fields['amount'],
                 'customer_email' => $fields['customer_email'],
                 'currency' => $fields['currency'],
+                'country' => $fields['country'],
                 'txref' => $fields['txref'],
                 'PBFPubKey' => $fields['public_key'],
                 'redirect_url' => $fields['redirect_url'],
@@ -97,7 +95,10 @@ class Rave extends BasePaymentGateway
                 "cache-control: no-cache"
             ],
         ));
-
+        
+        $_SESSION['seckey'] = $fields['secret_key'];
+        $_SESSION['cancelurl'] = $fields['cancel_url'];
+        
         $response = curl_exec($curl);
         $err = curl_error($curl);
 
@@ -134,7 +135,6 @@ class Rave extends BasePaymentGateway
         $hash = $params;
         $order = $this->createOrderModel()->whereHash($hash)->first();
         // $paymentMethod = $order->payment_method;
- 
 
         if (!$hash or !$order)
             throw new ApplicationException('No order found');
@@ -147,10 +147,9 @@ class Rave extends BasePaymentGateway
 
         // verify transaction
         $postdata = array(
-            'SECKEY' => $this->secKey,
+            'SECKEY' => $_SESSION['seckey'],
             'txref' => $txref
         );
-
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, "https://api.ravepay.co/flwv3-pug/getpaidx/api/v2/verify");
@@ -181,24 +180,38 @@ class Rave extends BasePaymentGateway
             // there was an error from the API
             //   die('API returned error: ' . $result->message);
             // throw new ApplicationException('Curl returned error: ' . $result['status']);
-            $cancelUrl = $this->cancelUrl;
-            $redirectPage = $cancelUrl.'?redirect='.array_get([], 'cancelPage');
-            return Redirect::to($order->getUrl($redirectPage));
+            
+            $cancelUrl = $_SESSION['cancelurl'];
+ 
+            // destroy the session 
+            session_destroy();
+
+            return Redirect::to($order->getUrl($cancelUrl));
         }
+        
+        // unserialize meta data to retrieve fields
+        $meta = $result['data']['meta'][0];
+        $fields = unserialize($meta['metavalue']);
 
         if ('successful' == $result['data']['status'] && ('00' == $result['data']['chargecode'] || '0' == $result['data']['chargecode'])) {
-
-            // unserialize meta data
-            $meta = $result['data']['meta'][0];
-            $fields = unserialize($meta['metavalue']);
 
             if ($order->markAsPaymentProcessed()) {
                 $order->logPaymentAttempt('Payment successful', 1, $fields, $result['data']);
                 $order->updateOrderStatus($paymentMethod->order_status, ['notify' => false]);
             }
-
+            
+            // destroy the session 
+            session_destroy();
+            
             return Redirect::to($order->getUrl($redirectPage));
-        } 
+        } else {
+            $cancelUrl = $_SESSION['cancelurl'];
+ 
+            // destroy the session 
+            session_destroy();
+
+            return Redirect::to($order->getUrl($cancelUrl));
+        }
     }
     
     public function processCancelUrl($params)
@@ -216,18 +229,15 @@ class Rave extends BasePaymentGateway
             throw new ApplicationException('No valid payment method found');
             
         $order->logPaymentAttempt('Payment canceled by customer', 0, input());
+            
         return Redirect::to($order->getUrl($redirectPage, null));
-        $order->updateOrderStatus($paymentMethod->order_status, ['notify' => false]);
     }
 
-    protected function getPaymentFormFields($order, $data = [])
+    public function getPaymentFormFields($order, $data = [])
     {
-
+        
         $returnUrl = $this->makeEntryPointUrl('rave_return_url') . '/' . $order->hash;
         $cancelUrl = $this->makeEntryPointUrl('rave_cancel_url') . '/' . $order->hash;
-        
-        // set secret key
-        $this->secKey = $this->getSecretKey();
 
         $currency = currency()->getUserCurrency();
 
@@ -252,6 +262,7 @@ class Rave extends BasePaymentGateway
 
         $fields = array();
         $fields['public_key'] = $this->getPublicKey();
+        $fields['secret_key'] = $this->getSecretKey();
         $fields['customer_email'] = $order->email;
         $fields['customer_firstname'] = $order->first_name;
         $fields['customer_lastname'] = $order->last_name;
@@ -264,9 +275,6 @@ class Rave extends BasePaymentGateway
         $fields['txref'] = $order->order_id . '_' . time();
         $fields['amount'] = number_format($order->order_total, 2, '.', '');
         $fields['currency'] = $currency;
-        
-        // set cancel url
-        $this->cancelUrl = $fields['cancel_url'];
         
         return $fields;
     }

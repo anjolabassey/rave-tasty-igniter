@@ -1,5 +1,8 @@
 # Rave Payment Gateway for Tasy Igniter
 
+- **Contributors:** [Anjola Bassey](https://github.com/anjolabassey) [Chigbo Ezejiugo](https://github.com/emmajiugo)
+- **Tags:** rave, tasty igniter, payment gateway, bank account, credit card, debit card, nigeria, kenya, ghana, international, mastercard, visa, barter
+
 ## Requirements
 - A Tasty Igniter site
 - A [Rave Account](https://rave.flutterwave.com)
@@ -14,13 +17,13 @@ This plugin allows you to accept payment on Tasty Igniter seamlessly
 
 ## Installation
 
-1. Download the latest [plugin zip](https://github.com/anjolabassey/rave-tasty-igniter)
-2. Go to your admin page
-3. Go to the `System  > Extensions`
-4. Click on `Upload`
-5. Choose the Plugin Zip, upload and install (after successfull installation, Rave will be among the extensions click the play button beside it to install it)
+1. Download the latest plugin zip
+2. Login to your Cpanel
+3. At the root of your site Uplad the Plugin Zip and extract the folder
+4. Navigate to `Extensions > igniter`, you should now see the rave folder
+5. On your admin dashboard, go to `System > Extensions` Rave will be among the extensions click the play button beside it to install it)
 6. On the menu, go to `Sales > Payments` click on  Rave Payment Gateway to enter your settings.
-7. Fill in the appropraite information and ensure that it is enabled and you are ready to go
+7. Fill in the appropriate information and ensure that it is enabled and you are ready to go
 
 
 ### Info
