@@ -17,9 +17,9 @@ This plugin allows you to accept payment on Tasty Igniter seamlessly
 
 ## Installation
 
-1. Download the latest plugin zip
-2. Login to your Cpanel
-3. At the root of your site Uplad the Plugin Zip and extract the folder
+1. Download the Zip file of this plugin.
+2. Login to your Cpanel.
+3. At the root of your site upload the zip file `extensions`. After this, extract the zip file.
 4. Navigate to `Extensions > igniter`, you should now see the rave folder
 5. On your admin dashboard, go to `System > Extensions` Rave will be among the extensions click the play button beside it to install it)
 6. On the menu, go to `Sales > Payments` click on  Rave Payment Gateway to enter your settings.
